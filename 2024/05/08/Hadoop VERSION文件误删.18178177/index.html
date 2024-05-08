@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>Hexo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="Hadoop 的VERSION文件误删$\color{ForestGreen}{接下来VERSION文件修复需要用到日志文件}$ 当我们集群的VERSION文件被删除后，我们无法启动组件。但是由于还有诸多数据，我们也无法直接推倒重来。所以需要恢复VERSION文件。Hadoop似乎没有自动恢复VERSION文件的功能。下面介绍手动恢复的方式。 在Hadoop集群中，哪些地方有VERSION文件？">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Hexo">
+<meta property="og:url" content="http://example.com/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/index.html">
+<meta property="og:site_name" content="Hexo">
+<meta property="og:description" content="Hadoop 的VERSION文件误删$\color{ForestGreen}{接下来VERSION文件修复需要用到日志文件}$ 当我们集群的VERSION文件被删除后，我们无法启动组件。但是由于还有诸多数据，我们也无法直接推倒重来。所以需要恢复VERSION文件。Hadoop似乎没有自动恢复VERSION文件的功能。下面介绍手动恢复的方式。 在Hadoop集群中，哪些地方有VERSION文件？">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507191125217-1799831634.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507191247279-939354958.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507192156735-524404241.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507192513094-448059743.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507201124559-1802041681.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507201646967-1276590979.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507212005683-133451991.png">
+<meta property="article:published_time" content="2024-05-08T01:31:21.687Z">
+<meta property="article:modified_time" content="2024-05-08T01:29:16.984Z">
+<meta property="article:author" content="John Doe">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507191125217-1799831634.png">
+  
+    <link rel="alternate" href="/atom.xml" title="Hexo" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+  
+<meta name="generator" content="Hexo 7.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Hexo</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"><span class="fa fa-bars"></span></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+        
+          <a class="nav-icon" href="/atom.xml" title="RSS Feed"><span class="fa fa-rss"></span></a>
+        
+        <a class="nav-icon nav-search-btn" title="Search"><span class="fa fa-search"></span></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="http://example.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-Hadoop VERSION文件误删.18178177" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.687Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="Hadoop-的VERSION文件误删"><a href="#Hadoop-的VERSION文件误删" class="headerlink" title="Hadoop 的VERSION文件误删"></a>Hadoop 的VERSION文件误删</h1><p>$\color{ForestGreen}{接下来VERSION文件修复需要用到日志文件}$</p>
+<p>当我们集群的VERSION文件被删除后，我们无法启动组件。但是由于还有诸多数据，我们也无法直接推倒重来。所以需要恢复VERSION文件。Hadoop似乎没有自动恢复VERSION文件的功能。下面介绍手动恢复的方式。</p>
+<p>在Hadoop集群中，哪些地方有VERSION文件？</p>
+<ul>
+<li>dfs（$\color{ForestGreen}{DataNode}$）路径下的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507191125217-1799831634.png" alt="img"></p>
+<ul>
+<li>dfs（$\color{ForestGreen}{DataNode}$）路径下，BP中的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507191247279-939354958.png" alt="img"></p>
+<ul>
+<li>name（$\color{ForestGreen}{NameNode}$）路径下的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507192156735-524404241.png" alt="img"></p>
+<ul>
+<li>namesecondary（$\color{ForestGreen}{2NN}$）路径下的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507192513094-448059743.png" alt="img"></p>
+<h2 id="如何对这些VERSION文件进行恢复"><a href="#如何对这些VERSION文件进行恢复" class="headerlink" title="如何对这些VERSION文件进行恢复"></a>如何对这些VERSION文件进行恢复</h2><h3 id="dfs路径下的VERSION文件"><a href="#dfs路径下的VERSION文件" class="headerlink" title="dfs路径下的VERSION文件"></a>dfs路径下的VERSION文件</h3><p><strong>文件格式：</strong></p>
+<blockquote>
+<p>#Tue May 07 18:51:27 CST 2024 <br>storageID&#x3D; <font color=ForestGreen>&lt;存储id号&gt;</font> <br>clusterID&#x3D; <font color=ForestGreen>&lt;集群id，全局唯一&gt;</font> <br>cTime&#x3D;0 <br>datanodeUuid&#x3D; <font color=ForestGreen>&lt;datanode的唯一识别码&gt;</font> <br>storageType&#x3D;DATA_NODE  <font color=ForestGreen>&lt;存储类型&gt;</font> <br>layoutVersion&#x3D;-57 <font color=ForestGreen>&lt;是一个负整数。通常只有HDFS增加新特性时才会更新这个版本号&gt;</font></p>
+</blockquote>
+<p><strong>解决方式：</strong></p>
+<p>去查看NameNode的日志。<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507201124559-1802041681.png" alt="img"></p>
+<p>通过grep命令查到需要的日志</p>
+<p><code>cat hadoop-atguigu-namenode-hadoop102.log | grep BlockStateChange</code></p>
+<p>查到的结果如下：<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507201646967-1276590979.png" alt="img"></p>
+<p>我们拿最后一条日志来分析（<font color=ForestGreen>直接拿绿色部分的就行</font>）：</p>
+<blockquote>
+<p>2024-05-07 18:51:28,105 INFO BlockStateChange: BLOCK* processReport 0x74ca70d51f11d770: from <br>storage DS-9166b824-2195-4374-96fa-5a7d37d9e7fe <font color=ForestGreen>&lt; storageID &gt;</font><br>node DatanodeRegistration( <br>192.168.12.102:9866, <font color=ForestGreen> &lt; IP,通过这个来抉择把这些数据放到哪个节点 &gt; </font><br>datanodeUuid&#x3D;89dc3537-4e52-4743-b3d8-7dc1fe66e4ab, <font color=ForestGreen> &lt; datanodeUuid &gt; </font><br>infoPort&#x3D;9864, infoSecurePort&#x3D;0, ipcPort&#x3D;9867, <br>storageInfo&#x3D;lv&#x3D;-57; <font color=ForestGreen> &lt; layoutVersion &gt; </font><br>cid&#x3D;CID-7bafcbf4-3396-4c60-b3f3-52b7b528ce72;<br>nsid&#x3D;1313511992;<br>c&#x3D;1709005876603<br>), blocks: 657, hasStaleStorage: false, processing time: 7 msecs, invalidatedBlocks: 0</p>
+</blockquote>
+<h3 id="dfs目录下DP中的VERSION"><a href="#dfs目录下DP中的VERSION" class="headerlink" title="dfs目录下DP中的VERSION"></a>dfs目录下DP中的VERSION</h3><p><strong>文件格式：</strong></p>
+<blockquote>
+<p>#Tue May 07 18:51:27 CST 2024<br>namespaceID&#x3D; <font color=ForestGreen> &lt; 是datanode首次访问namenode的时候从namenode处获取的storageID对每个datanode来说是唯一的（但对于单个datanode中所有存储目录来说则是相同的），namenode可用这个属性来区分不同datanode &gt; </font><br>cTime&#x3D; <font color=ForestGreen>&lt; 标记了datanode存储系统的创建时间，对于刚刚格式化的存储系统，这个属性为0；但是在文件系统升级之后，该值会更新到新的时间戳 &gt;</font><br>blockpoolID&#x3D;BP-294152212-192.168.12.102-1709005876603<br>layoutVersion&#x3D;-57</p>
+</blockquote>
+<p><strong>解决方式：</strong></p>
+<p><code>cat hadoop-atguigu-namenode-hadoop102.log | grep oldBlock</code><br>结果如下：<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507212005683-133451991.png" alt="img"></p>
+<blockquote>
+<p>2024-04-02 20:54:37,355 INFO org.apache.hadoop.hdfs.server.namenode.FSNamesystem: commitBlockSynchronization(<br>oldBlock&#x3D;BP-294152212-192.168.12.102-1709005876603 <font color=ForestGreen>&lt; blockpoolID &gt;</font><br>:blk_1073746367_5549, file&#x3D;&#x2F;hbase&#x2F;WALs&#x2F;hadoop102,16020,1712031081757&#x2F;hadoop102%2C16020%2C1712031081757.1712034695561, newgenerationstamp&#x3D;5556, newlength&#x3D;83, newtargets&#x3D;[192.168.12.102:9866, 192.168.12.103:9866, 192.168.12.104:9866]) successful</p>
+</blockquote>
+<font color=ForestGreen>
+cTime的值就是blockpoolID的最后那段时间戳 <br/>
+namespaceID的值为上方的nsid
+</font>
+
+<h3 id="name路径下的VERSION"><a href="#name路径下的VERSION" class="headerlink" title="name路径下的VERSION"></a>name路径下的VERSION</h3><p><strong>文件格式：</strong></p>
+<blockquote>
+<p>#Tue May 07 18:51:23 CST 2024<br>namespaceID&#x3D;1313511992<br>clusterID&#x3D;CID-7bafcbf4-3396-4c60-b3f3-52b7b528ce72<br>cTime&#x3D;1709005876603<br>storageType&#x3D;NAME_NODE<br>blockpoolID&#x3D;BP-294152212-192.168.12.102-1709005876603<br>layoutVersion&#x3D;-64</p>
+</blockquote>
+<p><strong>解决方式：</strong></p>
+<blockquote>
+</blockquote>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/" data-id="clvx5arej00034wub0kyt5rrq" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2024/05/08/hive%20on%20spark%20%E4%BC%98%E5%8C%96-SQL%E5%B1%82%E9%9D%A2.18172390/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          (no title)
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2024/05/08/Flume%E5%92%8Ckafka%20produce%E7%9B%B8%E5%85%B3%E9%85%8D%E7%BD%AE.18173908/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title"></div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2024/05/">May 2024</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2024/05/08/hive%20on%20spark%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B.18136064/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/hive%20on%20spark%20%E4%BC%98%E5%8C%96-SQL%E5%B1%82%E9%9D%A2.18172390/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Flume%E5%92%8Ckafka%20produce%E7%9B%B8%E5%85%B3%E9%85%8D%E7%BD%AE.18173908/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18172373/">(no title)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2024 John Doe<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.6.4.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>

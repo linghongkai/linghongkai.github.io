@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>Hexo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="Kafka性能测试单节点、百兆网卡生产者 消费者   start.time end.time data.consumed.in.MB MB.sec data.consumed.in.nMsg nMsg.sec rebalance.time.ms fetch.time.ms fetch.MB.sec fetch.nMsg.sec    19:01:12:193 19:05:25:988 2861.3">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Hexo">
+<meta property="og:url" content="http://example.com/2024/05/08/Kafka%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.18174790/index.html">
+<meta property="og:site_name" content="Hexo">
+<meta property="og:description" content="Kafka性能测试单节点、百兆网卡生产者 消费者   start.time end.time data.consumed.in.MB MB.sec data.consumed.in.nMsg nMsg.sec rebalance.time.ms fetch.time.ms fetch.MB.sec fetch.nMsg.sec    19:01:12:193 19:05:25:988 2861.3">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506185519459-605853289.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506192606375-45654725.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506195038370-231527460.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506204448492-1822907702.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506205051326-1745350431.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506205130503-1902726093.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210016326-2124188368.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210144954-1240478869.png">
+<meta property="og:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210316653-1574435963.png">
+<meta property="article:published_time" content="2024-05-08T01:31:21.677Z">
+<meta property="article:modified_time" content="2024-05-06T13:03:40.932Z">
+<meta property="article:author" content="John Doe">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506185519459-605853289.png">
+  
+    <link rel="alternate" href="/atom.xml" title="Hexo" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+  
+<meta name="generator" content="Hexo 7.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Hexo</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"><span class="fa fa-bars"></span></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+        
+          <a class="nav-icon" href="/atom.xml" title="RSS Feed"><span class="fa fa-rss"></span></a>
+        
+        <a class="nav-icon nav-search-btn" title="Search"><span class="fa fa-search"></span></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="http://example.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-Kafka性能测试.18174790" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/Kafka%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.18174790/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.677Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="Kafka性能测试"><a href="#Kafka性能测试" class="headerlink" title="Kafka性能测试"></a>Kafka性能测试</h1><h2 id="单节点、百兆网卡"><a href="#单节点、百兆网卡" class="headerlink" title="单节点、百兆网卡"></a>单节点、百兆网卡</h2><h3 id="生产者"><a href="#生产者" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506185519459-605853289.png" alt="img"></p>
+<h3 id="消费者"><a href="#消费者" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">19:01:12:193</td>
+<td align="left">19:05:25:988</td>
+<td align="left">2861.3758</td>
+<td align="left">11.2744</td>
+<td align="left">3000370</td>
+<td align="left">11822.0217</td>
+<td align="left">774</td>
+<td align="left">253021</td>
+<td align="left">11.3088</td>
+<td align="left">11858.1857</td>
+</tr>
+</tbody></table>
+<h2 id="集群（3个节点）、百兆网卡"><a href="#集群（3个节点）、百兆网卡" class="headerlink" title="集群（3个节点）、百兆网卡"></a>集群（3个节点）、百兆网卡</h2><h3 id="生产者-1"><a href="#生产者-1" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506192606375-45654725.png" alt="img"></p>
+<h3 id="消费者-1"><a href="#消费者-1" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">19:28:07:904</td>
+<td align="left">19:28:36:407</td>
+<td align="left">953.7115</td>
+<td align="left">33.4600</td>
+<td align="left">1000039</td>
+<td align="left">35085.3945</td>
+<td align="left">299</td>
+<td align="left">28204</td>
+<td align="left">33.8148</td>
+<td align="left">35457.3465</td>
+</tr>
+</tbody></table>
+<h2 id="单节点、不限制网卡"><a href="#单节点、不限制网卡" class="headerlink" title="单节点、不限制网卡"></a>单节点、不限制网卡</h2><h3 id="生产者-2"><a href="#生产者-2" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506195038370-231527460.png" alt="img"></p>
+<h3 id="消费者-2"><a href="#消费者-2" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">19:51:16:377</td>
+<td align="left">19:51:27:616</td>
+<td align="left">953.9738</td>
+<td align="left">84.8807</td>
+<td align="left">1000314</td>
+<td align="left">89003.8260</td>
+<td align="left">374</td>
+<td align="left">10865</td>
+<td align="left">87.8025</td>
+<td align="left">92067.5564</td>
+</tr>
+</tbody></table>
+<h2 id="集群（3台）、不限制网卡"><a href="#集群（3台）、不限制网卡" class="headerlink" title="集群（3台）、不限制网卡"></a>集群（3台）、不限制网卡</h2><h3 id="生产者-3"><a href="#生产者-3" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506204448492-1822907702.png" alt="img"></p>
+<h3 id="消费者-3"><a href="#消费者-3" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">20:45:27:097</td>
+<td align="left">20:45:33:382</td>
+<td align="left">953.6743</td>
+<td align="left">151.7382</td>
+<td align="left">1000000</td>
+<td align="left">159108.9897</td>
+<td align="left">970</td>
+<td align="left">5315</td>
+<td align="left">179.4307</td>
+<td align="left">188146.7545</td>
+</tr>
+</tbody></table>
+<h2 id="生产者参数配置"><a href="#生产者参数配置" class="headerlink" title="生产者参数配置"></a>生产者参数配置</h2><h3 id="linger-ms-5"><a href="#linger-ms-5" class="headerlink" title="linger.ms &#x3D; 5"></a>linger.ms &#x3D; 5</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506205051326-1745350431.png" alt="img"></p>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506205130503-1902726093.png" alt="img"></p>
+<h3 id="linger-ms-5-batch-size-32M"><a href="#linger-ms-5-batch-size-32M" class="headerlink" title="linger.ms &#x3D; 5 &amp;&amp; batch.size&#x3D;32M"></a>linger.ms &#x3D; 5 &amp;&amp; batch.size&#x3D;32M</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210016326-2124188368.png" alt="img"></p>
+<h3 id="linger-ms-10-batch-size-32M"><a href="#linger-ms-10-batch-size-32M" class="headerlink" title="linger.ms &#x3D; 10 &amp;&amp; batch.size&#x3D;32M"></a>linger.ms &#x3D; 10 &amp;&amp; batch.size&#x3D;32M</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210144954-1240478869.png" alt="img"></p>
+<h3 id="linger-ms-20-batch-size-32M"><a href="#linger-ms-20-batch-size-32M" class="headerlink" title="linger.ms &#x3D; 20 &amp;&amp; batch.size&#x3D;32M"></a>linger.ms &#x3D; 20 &amp;&amp; batch.size&#x3D;32M</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210316653-1574435963.png" alt="img"></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/Kafka%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.18174790/" data-id="clvx5arek00054wubgduo8p87" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18149070/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          (no title)
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2024/05/08/hello-world/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">Hello World</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2024/05/">May 2024</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2024/05/08/hive%20on%20spark%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B.18136064/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/hive%20on%20spark%20%E4%BC%98%E5%8C%96-SQL%E5%B1%82%E9%9D%A2.18172390/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Flume%E5%92%8Ckafka%20produce%E7%9B%B8%E5%85%B3%E9%85%8D%E7%BD%AE.18173908/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18172373/">(no title)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2024 John Doe<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.6.4.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>

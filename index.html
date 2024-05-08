@@ -69,6 +69,537 @@
       <div class="outer">
         <section id="main">
   
+    <article id="post-hive on spark内存模型.18136064" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/hive%20on%20spark%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B.18136064/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.691Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="内容介绍"><a href="#内容介绍" class="headerlink" title="内容介绍"></a>内容介绍</h1><p>hive on spark的调优,那必然涉及到这一系列框架的内存模型。本章就是来讲一下这些框架的内存模型。<br>hive on spark的任务，从开始到结束。总共涉及了3个框架。分别是：yarn、hive、spark<br>其中，hive只是一个客户端的角色。就不涉及任务运行时的内存。所以这里主要讲的yarn和spark的内存模型。<br>其中，由于spark是运行在yarn的container中。所以我们从外到内。先将yarn的资源分配。后讲spark的内存模型。</p>
+<h2 id="hive-on-spark提交流程"><a href="#hive-on-spark提交流程" class="headerlink" title="hive on spark提交流程"></a>hive on spark提交流程</h2><h3 id="hive阶段"><a href="#hive阶段" class="headerlink" title="hive阶段"></a>hive阶段</h3><p>首先上场的是hive框架。当我们写了一个SQL语句的时候，会被hive进行解析（hive用的SQL解析框架是Antlr4）。解析的流程是：</p>
+<ul>
+<li>解析器将SQL解析成AST（抽象语法树）</li>
+<li>逻辑生成器</li>
+<li>逻辑优化器 (这里主要做一些谓词下推的操作)</li>
+<li>物理生成器</li>
+<li>物理优化器(这里则是做基于代价的优化，简称CBO)</li>
+<li>执行器 (在这里就会将Spark任务提交给yarn)<br>这里是进行物理优化器的地方，可以看见，从这里开始，就已经根据引擎的不同，进行不同的优化了。<br><img src="https://img2023.cnblogs.com/blog/2580584/202404/2580584-20240416090836602-581162753.png" alt="img"><br>此处就是执行器<br><img src="https://img2023.cnblogs.com/blog/2580584/202404/2580584-20240416090713642-541615028.png" alt="img"><br>我们进去之后就可以看见 提交Spark任务<br><img src="https://img2023.cnblogs.com/blog/2580584/202404/2580584-20240416090813834-27685100.png" alt="img"><br>我们可以在这里看见，把job上传到yarn上，并且添加了一些监听器来获取job的状态<br><img src="https://img2023.cnblogs.com/blog/2580584/202404/2580584-20240416090824971-810464218.png" alt="img"></li>
+</ul>
+<p>这样之后，SQL就会被转为Spark一系列的RDD。</p>
+<h3 id="yarn资源"><a href="#yarn资源" class="headerlink" title="yarn资源"></a>yarn资源</h3><p>在hive中，我们已经把spark job提交到yarn上面。现在我们就来看一下yarn的内存模型。</p>
+<p>yarn的组成很简单，有ResourceManager和NodeManager，其中ResourceManager是大哥。对客户端传来的请求做处理。NodeManager是小弟。负责运行任务。<br>就此而言，我们就可以做出一个简单的判断：对于资源（内存和CPU）的分配，我们要多给NodeManager资源。ResourceManager无需很多的资源。因为ResourceManager仅仅是处理客户端的请求和管理NodeManager。并不进行任务的计算。<br>NodeManager里面是很多的Container，我们的Spark任务就是跑在Container里面的。</p>
+<h4 id="yarn中关于资源的参数"><a href="#yarn中关于资源的参数" class="headerlink" title="yarn中关于资源的参数"></a>yarn中关于资源的参数</h4><p>由于spark任务是跑在NodeManager下的Container中。所以我们可以对NodeManager和Contaniner进行参数的调整（资源的配置）</p>
+<h5 id="NodeManager的参数"><a href="#NodeManager的参数" class="headerlink" title="NodeManager的参数"></a>NodeManager的参数</h5><ul>
+<li>yarn.nodemanager.resource.memory-mb : NodeManager可以给Container分配内存</li>
+<li>yarn.nodemanager.resource.cpu-vcores ：NodeManager可以给Container分配的虚拟核数（因为不同的CPU可能计算能力不同。有可能一个i7的CPU顶两个i5的。所以就可以把i7的cpu映射为两个虚拟核。这样的话，就不会出现因为CPU的差异，而导致的：相同的任务跑多次。每次所耗的时间相差特别大。）</li>
+</ul>
+<h5 id="Container的参数"><a href="#Container的参数" class="headerlink" title="Container的参数"></a>Container的参数</h5><ul>
+<li>yarn.scheduler.maximum-allocation-mb ： 单个Container可以使用的最大内存</li>
+<li>yarn.scheduler.minimum-allocation-mb ： 单个Container可以使用的最小内存</li>
+</ul>
+<h3 id="Spark资源"><a href="#Spark资源" class="headerlink" title="Spark资源"></a>Spark资源</h3><p>Spark的内存模型可以大致分为堆内内存和堆外内存<br><img src="https://img2023.cnblogs.com/blog/2580584/202404/2580584-20240416090923987-1280164441.png" alt="img"></p>
+<h4 id="堆内内存"><a href="#堆内内存" class="headerlink" title="堆内内存"></a>堆内内存</h4><p><img src="https://img2023.cnblogs.com/blog/2580584/202404/2580584-20240416090934442-91094235.png" alt="img"><br>动态占用机制：简单的来说，</p>
+<ul>
+<li>当<strong>存储</strong>和<strong>执行</strong>的内存都不足时。<strong>存储</strong>会存放到硬盘。</li>
+<li>当<strong>存储</strong>占用了<strong>执行</strong>的内存后，<strong>执行</strong>想收回内存时。<strong>存储</strong>会将占用的部分转存到硬盘。归还内存</li>
+<li>当<strong>执行</strong>占用了<strong>存储</strong>的内存后，<strong>存储</strong>想收回内存时，<strong>执行</strong>无法归还内存。需要等到<strong>执行</strong>使用完毕，才可以归还内存。（朴素的想一想，比较计算重要。不能停止，只好让<strong>存储</strong>等一等。等<strong>执行</strong>计算完毕，再归还内存）</li>
+</ul>
+<h4 id="堆外内存"><a href="#堆外内存" class="headerlink" title="堆外内存"></a>堆外内存</h4><p><img src="https://img2023.cnblogs.com/blog/2580584/202404/2580584-20240416090943688-1622182919.png" alt="img"></p>
+<p>在默认情况下，堆外内存并不启用。可以通过<code>spark.memory.offHeap.enabled</code>开启。<br>堆外内存的大小由<code>spark.memory.offHeap.size</code>指定。<br>堆外内存的优点：</p>
+<ul>
+<li>Spark直接操作系统堆外内存，减少了不必要的内存开销，和频繁的GC的扫描和回收，提高了性能</li>
+<li>可以被精准的申请和释放。（因为堆内内存是由JVM管理的。所以无法实现精准的释放）</li>
+</ul>
+<h3 id="整合yarn和Spark"><a href="#整合yarn和Spark" class="headerlink" title="整合yarn和Spark"></a>整合yarn和Spark</h3><p>我们先对一台服务器的资源配置做出假设，并根据这些假设，对资源进行合理的分配。</p>
+<p><strong>服务器的资源情况：</strong> 32核CPU，128G内存</p>
+<p>因为我们的服务器不可能只是为yarn一个框架提供资源。其他的框架也需要资源。所以我们可用分配给yarn的资源为：16核CPU，64G内存</p>
+<p>Spark任务分为Driver和Executor。</p>
+<h4 id="Executor"><a href="#Executor" class="headerlink" title="Executor"></a>Executor</h4><p>由于 Spark 的Executor的CPU建议数量是4~6个。 然后服务器中yarn可用的CPU资源数是16。</p>
+<p>16&#x2F;4&#x3D;4;16&#x2F;5&#x3D;3…1;16&#x2F;6&#x3D;2…4;可以看出。单个Executor的CPU核数为5、6的时候，都会有一些CPU核未使用上，造成CPU的浪费。所以我们选取 单个Executor的CPU核数为4。然后我们根据1CU原则（1个CPU对应4G内存）。所以Executor的内存数为4*4G。</p>
+<p><strong>单个Executo资源情况：</strong> 4核CPU，16G内存。</p>
+<p>根据资源的配置情况可知， 一个节点能运行的Executo数量为 4</p>
+<p>这样，我们对于单个Executor 的资源分配好了。我们再来看Executor内部的内存分配。</p>
+<p>由上面的Spark的内存模型可知。Spark的内存分为<strong>堆内</strong>和<strong>堆外</strong>内存。在默认情况下  堆外内存&#x3D;堆内内存*0.1 (<code>spark.executor.memoryOverhead</code>&#x3D;<code>spark.executor.memory</code>*0.1)<br>所以简单的计算一下就可知：</p>
+<ul>
+<li><code>spark.executor.memoryOverhead</code>&#x3D;$\frac{1}{11}*16G(单个Executor的可用的总内存)$</li>
+<li><code>spark.executor.memory</code>&#x3D;$\frac{10}{11}*16G(单个Executor的可用总内存)$</li>
+</ul>
+<p>当然，很多情况下这个结果都不是整数。所以计算出结果后，再进行一些个人的调整就好。</p>
+<p>在这里Executor内部实际的内存分配情况如下：</p>
+<p><code>spark.executor.memoryOverhead</code>&#x3D;2G</p>
+<p><code>spark.executor.memory</code>&#x3D;14G</p>
+<p>到这里，我们给各个组件的资源就已经分配完毕了。<br>下面我们来从Spark任务的角度谈一下，一个Spark任务，应该使用多少个Executor合适。</p>
+<p>对于一个Spark任务的Executor数量，有<strong>静态分配</strong>和<strong>动态分配</strong>两种选择。<br>我们当然是选择<strong>动态分配</strong>。（因为<strong>静态分配</strong>相比于<strong>动态分配</strong>，更容易造成资源的浪费或者Spark任务资源的不足。）</p>
+<p><strong>动态分配：</strong> 根据Spark任务的工作负载，可用动态的调整所占用的资源（Executor的数量）。需要时申请，不需要时释放。下面是<strong>动态分配</strong>的一些参数的设置</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_">#</span><span class="language-bash">启动动态分配</span></span><br><span class="line">spark.dynamicAllocation.enabled    true</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash">启用Spark shuffle服务</span></span><br><span class="line">spark.shuffle.service.enabled    true</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash">Executor个数初始值</span></span><br><span class="line">spark.dynamicAllocation.initialExecutors    1</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash">Executor个数最小值</span></span><br><span class="line">spark.dynamicAllocation.minExecutors    1</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash">Executor个数最大值</span></span><br><span class="line">spark.dynamicAllocation.maxExecutors    12</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash">Executor空闲时长，若某Executor空闲时间超过此值，则会被关闭</span></span><br><span class="line">spark.dynamicAllocation.executorIdleTimeout    60s</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash">积压任务等待时长，若有Task等待时间超过此值，则申请启动新的Executor</span></span><br><span class="line">spark.dynamicAllocation.schedulerBacklogTimeout    1s</span><br><span class="line"><span class="meta prompt_">#</span><span class="language-bash">spark shuffle老版本协议</span></span><br><span class="line">spark.shuffle.useOldFetchProtocol true</span><br></pre></td></tr></table></figure>
+
+<p>$\color{ForestGreen}{为什么启动Spark的shuffle}$：作用是将map的输出文件落盘。供后续的reduce使用。</p>
+<p>$\color{ForestGreen}{为什么落盘}$：因为如果map的输出的文件不落盘。map就不会被释放。也就无法释放这个空闲的Executor。只有将输出文件落盘后，这个Executor才会被释放。</p>
+<h4 id="Driver"><a href="#Driver" class="headerlink" title="Driver"></a>Driver</h4><p>Driver主要的配置参数有<code>spark.driver.memory</code>和<code>spark.driver.memoryOverhead</code>。</p>
+<p>此处<code>spark.driver.memory</code>和<code>spark.driver.memoryOverhead</code>的分配的内存比例和Executor一样。都是<code>spark.driver.memoryOverhead</code>&#x3D;<code>spark.driver.memory</code>*0.1</p>
+<p>对于Driver的总内存，有一个经验公式：（假定<code>yarn.nodemanager.resource.memory-mb</code>设为$X$）</p>
+<ul>
+<li>若$X&gt;50G$，则Driver设为12G</li>
+<li>若$12G&lt;X&lt;50G$，则Driver设为4G</li>
+<li>若$1G&lt;X&lt;12G$，则Driver设为1G</li>
+</ul>
+<p>因为我们的<code>yarn.nodemanager.resource.memory-mb</code>&#x3D;64G。所以：</p>
+<ul>
+<li><code>spark.driver.memory</code> &#x3D; 10G</li>
+<li><code>spark.driver.memoryOverhead</code> &#x3D; 2G</li>
+</ul>
+<h3 id="配置文件的设置"><a href="#配置文件的设置" class="headerlink" title="配置文件的设置"></a>配置文件的设置</h3><h4 id="spark-defaults-conf"><a href="#spark-defaults-conf" class="headerlink" title="spark-defaults.conf"></a>spark-defaults.conf</h4><p>配置文件的位置：<code>$HivE_HOME/conf/spark-defaults.conf</code></p>
+<p>由于我们多个节点有Spark。所以可能会有一些疑问：$\color{ForestGreen}{这么多Spark，这么多配置文件，究竟是Spark任务运行的节点 的配置文件生效呢？还是Hive目录下的配置文件生效呢？}$<br>答案：当然是Hive目录下的配置文件生效。如果我们了解过Spark的任务提交流程就知道。当我们运行了一条命令行后。Spark-submit会解析参数。然后再向yarn提交请求。</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">spark.master                               yarn</span><br><span class="line">spark.eventLog.enabled                   true</span><br><span class="line">spark.eventLog.dir    hdfs://myNameService1/spark-history</span><br><span class="line">spark.executor.cores    4</span><br><span class="line">spark.executor.memory    14g</span><br><span class="line">spark.executor.memoryOverhead    2g</span><br><span class="line">spark.driver.memory    10g</span><br><span class="line">spark.driver.memoryOverhead    2g</span><br><span class="line">spark.dynamicAllocation.enabled  true</span><br><span class="line">spark.shuffle.service.enabled  true</span><br><span class="line">spark.dynamicAllocation.executorIdleTimeout  60s</span><br><span class="line">spark.dynamicAllocation.initialExecutors    1</span><br><span class="line">spark.dynamicAllocation.minExecutors  1</span><br><span class="line">spark.dynamicAllocation.maxExecutors  12</span><br><span class="line">spark.dynamicAllocation.schedulerBacklogTimeout 1s</span><br><span class="line">spark.shuffle.useOldFetchProtocol    true</span><br></pre></td></tr></table></figure>
+
+<h4 id="spark-shullfe"><a href="#spark-shullfe" class="headerlink" title="spark-shullfe"></a>spark-shullfe</h4><p>Spark的shullfe会因为Cluster Manager（standalone、Mesos、Yarn）的不同而不同。<br>此处我们是yarn。</p>
+<p>步骤如下：</p>
+<ul>
+<li>拷贝<code>$SPARK_HOME/yarn/spark-3.0.0-yarn-shuffle.jar</code>到<code>$HADOOP_HOME/share/hadoop/yarn/lib</code></li>
+<li>向集群分发<code>$HADOOP_HOME/share/hadoop/yarn/lib/spark-3.0.0-yarn-shuffle.jar</code></li>
+<li>修改<code>$HADOOP_HOME/etc/hadoop/yarn-site.xml</code></li>
+</ul>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>yarn.nodemanager.aux-services<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>mapreduce_shuffle,spark_shuffle<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">name</span>&gt;</span>yarn.nodemanager.aux-services.spark_shuffle.class<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">value</span>&gt;</span>org.apache.spark.network.yarn.YarnShuffleService<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>分发<code>$HADOOP_HOME/etc/hadoop/yarn-site.xml</code></li>
+<li>重启yarn</li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/hive%20on%20spark%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B.18136064/" data-id="clvx5areq00074wubb5id1lqr" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-hive on spark 优化-SQL层面.18172390" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/hive%20on%20spark%20%E4%BC%98%E5%8C%96-SQL%E5%B1%82%E9%9D%A2.18172390/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.689Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="Hive-On-Spark-调优"><a href="#Hive-On-Spark-调优" class="headerlink" title="Hive On Spark 调优"></a>Hive On Spark 调优</h1><p>本篇博客将从hive on spark的SQL层面，来对任务做一些优化。下面的优化，从这几个方面来讲：Group、Join、并行度、小文件。</p>
+<h2 id="Group、Join"><a href="#Group、Join" class="headerlink" title="Group、Join"></a>Group、Join</h2><p>$\color{ForestGreen}{小提示：}$</p>
+<p>Group和Join的不同之处在于：</p>
+<ul>
+<li>Group 需要Reduce</li>
+<li>Join 可以没有Reduce</li>
+</ul>
+<p>其实无论是 <strong>Group</strong>还是<strong>Join</strong>，它们均有一些通用的解决方案：</p>
+<ul>
+<li><p>我们在map阶段下手。提前进行聚合。这样就会减少Shuffle。</p>
+<p>这里面两者较为不同的是实现方式。</p>
+<p>因为$\color{ForestGreen}{Group}$是一张表。所以就只是在map阶段进行预聚合。</p>
+<p>但$\color{ForestGreen}{Join}$是两张表。所以它想做到预聚合，这就需要缓存一张表。</p>
+</li>
+<li><p>在reduce阶段做文章。再开一个MR任务。也就是二次聚合。</p>
+<p>只不过，这两者的实现方式，也是较为不同。</p>
+<p>$\color{ForestGreen}{Group}$是在map阶段添加随机数。然后在第一个Reduce中，聚合一部分。然后去掉随机数。再进行最后的聚合。</p>
+<p>$\color{ForestGreen}{Join}$是在map和第一个Reduce里面不做任何修改。只是将Reduce中那些Key特别多的。单独再开一个任务，执行Map Join。</p>
+</li>
+</ul>
+<p>这样对于Group的优化就讲完了。<br>对于Join 还有一些优化：</p>
+<p>SMB Join：要求分桶有序，并且两张表的桶数是倍数关系。</p>
+<h2 id="并行度"><a href="#并行度" class="headerlink" title="并行度"></a>并行度</h2><p>一般Map阶段的并行度我们通常不需要管他。我们主要关注的是Reduce阶段的并行度。</p>
+<p>Reduce并行度相关的参数：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">--指定Reduce端并行度，默认值为-1，表示用户未指定</span><br><span class="line">set mapreduce.job.reduces;</span><br><span class="line">--Reduce端并行度最大值</span><br><span class="line">set hive.exec.reducers.max;</span><br><span class="line">--单个Reduce Task计算的数据量，用于估算Reduce并行度</span><br><span class="line">set hive.exec.reducers.bytes.per.reducer;</span><br></pre></td></tr></table></figure>
+
+<p>但是我们一般都不会手动指定。都是自动指定。</p>
+<p>但是现在的自动指定也有一些问题：只能统计表级别的信息，所以对于进入Reduce端的数据量，它统计的并不准确。</p>
+<p>需要开启以下参数：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">--执行DML语句时，收集表级别的统计信息</span><br><span class="line">set hive.stats.autogather=true;</span><br><span class="line">--执行DML语句时，收集字段级别的统计信息</span><br><span class="line">set hive.stats.column.autogather=true;</span><br><span class="line">--计算Reduce并行度时，从上游Operator统计信息获得输入数据量</span><br><span class="line">set hive.spark.use.op.stats=true;</span><br><span class="line">--计算Reduce并行度时，使用列级别的统计信息估算输入数据量</span><br><span class="line">set hive.stats.fetch.column.stats=true;</span><br></pre></td></tr></table></figure>
+
+<h2 id="小文件"><a href="#小文件" class="headerlink" title="小文件"></a>小文件</h2><p>小文件又可以分为Map端和Reduce端的小文件处理方式：</p>
+<ul>
+<li><p>Map端：对小文件进行合并。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">--可将多个小文件切片，合并为一个切片，进而由一个map任务处理</span><br><span class="line">set hive.input.format=org.apache.hadoop.hive.ql.io.CombineHiveInputFormat;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>Reduce端：将输出的小文件，合并成大文件。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">--开启合并Hive on Spark任务输出的小文件</span><br><span class="line">  set hive.merge.sparkfiles=true;</span><br></pre></td></tr></table></figure></li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/hive%20on%20spark%20%E4%BC%98%E5%8C%96-SQL%E5%B1%82%E9%9D%A2.18172390/" data-id="clvx5arek00044wub7nlv8n3p" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-Hadoop VERSION文件误删.18178177" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.687Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="Hadoop-的VERSION文件误删"><a href="#Hadoop-的VERSION文件误删" class="headerlink" title="Hadoop 的VERSION文件误删"></a>Hadoop 的VERSION文件误删</h1><p>$\color{ForestGreen}{接下来VERSION文件修复需要用到日志文件}$</p>
+<p>当我们集群的VERSION文件被删除后，我们无法启动组件。但是由于还有诸多数据，我们也无法直接推倒重来。所以需要恢复VERSION文件。Hadoop似乎没有自动恢复VERSION文件的功能。下面介绍手动恢复的方式。</p>
+<p>在Hadoop集群中，哪些地方有VERSION文件？</p>
+<ul>
+<li>dfs（$\color{ForestGreen}{DataNode}$）路径下的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507191125217-1799831634.png" alt="img"></p>
+<ul>
+<li>dfs（$\color{ForestGreen}{DataNode}$）路径下，BP中的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507191247279-939354958.png" alt="img"></p>
+<ul>
+<li>name（$\color{ForestGreen}{NameNode}$）路径下的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507192156735-524404241.png" alt="img"></p>
+<ul>
+<li>namesecondary（$\color{ForestGreen}{2NN}$）路径下的VERSION文件</li>
+</ul>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507192513094-448059743.png" alt="img"></p>
+<h2 id="如何对这些VERSION文件进行恢复"><a href="#如何对这些VERSION文件进行恢复" class="headerlink" title="如何对这些VERSION文件进行恢复"></a>如何对这些VERSION文件进行恢复</h2><h3 id="dfs路径下的VERSION文件"><a href="#dfs路径下的VERSION文件" class="headerlink" title="dfs路径下的VERSION文件"></a>dfs路径下的VERSION文件</h3><p><strong>文件格式：</strong></p>
+<blockquote>
+<p>#Tue May 07 18:51:27 CST 2024 <br>storageID&#x3D; <font color=ForestGreen>&lt;存储id号&gt;</font> <br>clusterID&#x3D; <font color=ForestGreen>&lt;集群id，全局唯一&gt;</font> <br>cTime&#x3D;0 <br>datanodeUuid&#x3D; <font color=ForestGreen>&lt;datanode的唯一识别码&gt;</font> <br>storageType&#x3D;DATA_NODE  <font color=ForestGreen>&lt;存储类型&gt;</font> <br>layoutVersion&#x3D;-57 <font color=ForestGreen>&lt;是一个负整数。通常只有HDFS增加新特性时才会更新这个版本号&gt;</font></p>
+</blockquote>
+<p><strong>解决方式：</strong></p>
+<p>去查看NameNode的日志。<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507201124559-1802041681.png" alt="img"></p>
+<p>通过grep命令查到需要的日志</p>
+<p><code>cat hadoop-atguigu-namenode-hadoop102.log | grep BlockStateChange</code></p>
+<p>查到的结果如下：<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507201646967-1276590979.png" alt="img"></p>
+<p>我们拿最后一条日志来分析（<font color=ForestGreen>直接拿绿色部分的就行</font>）：</p>
+<blockquote>
+<p>2024-05-07 18:51:28,105 INFO BlockStateChange: BLOCK* processReport 0x74ca70d51f11d770: from <br>storage DS-9166b824-2195-4374-96fa-5a7d37d9e7fe <font color=ForestGreen>&lt; storageID &gt;</font><br>node DatanodeRegistration( <br>192.168.12.102:9866, <font color=ForestGreen> &lt; IP,通过这个来抉择把这些数据放到哪个节点 &gt; </font><br>datanodeUuid&#x3D;89dc3537-4e52-4743-b3d8-7dc1fe66e4ab, <font color=ForestGreen> &lt; datanodeUuid &gt; </font><br>infoPort&#x3D;9864, infoSecurePort&#x3D;0, ipcPort&#x3D;9867, <br>storageInfo&#x3D;lv&#x3D;-57; <font color=ForestGreen> &lt; layoutVersion &gt; </font><br>cid&#x3D;CID-7bafcbf4-3396-4c60-b3f3-52b7b528ce72;<br>nsid&#x3D;1313511992;<br>c&#x3D;1709005876603<br>), blocks: 657, hasStaleStorage: false, processing time: 7 msecs, invalidatedBlocks: 0</p>
+</blockquote>
+<h3 id="dfs目录下DP中的VERSION"><a href="#dfs目录下DP中的VERSION" class="headerlink" title="dfs目录下DP中的VERSION"></a>dfs目录下DP中的VERSION</h3><p><strong>文件格式：</strong></p>
+<blockquote>
+<p>#Tue May 07 18:51:27 CST 2024<br>namespaceID&#x3D; <font color=ForestGreen> &lt; 是datanode首次访问namenode的时候从namenode处获取的storageID对每个datanode来说是唯一的（但对于单个datanode中所有存储目录来说则是相同的），namenode可用这个属性来区分不同datanode &gt; </font><br>cTime&#x3D; <font color=ForestGreen>&lt; 标记了datanode存储系统的创建时间，对于刚刚格式化的存储系统，这个属性为0；但是在文件系统升级之后，该值会更新到新的时间戳 &gt;</font><br>blockpoolID&#x3D;BP-294152212-192.168.12.102-1709005876603<br>layoutVersion&#x3D;-57</p>
+</blockquote>
+<p><strong>解决方式：</strong></p>
+<p><code>cat hadoop-atguigu-namenode-hadoop102.log | grep oldBlock</code><br>结果如下：<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240507212005683-133451991.png" alt="img"></p>
+<blockquote>
+<p>2024-04-02 20:54:37,355 INFO org.apache.hadoop.hdfs.server.namenode.FSNamesystem: commitBlockSynchronization(<br>oldBlock&#x3D;BP-294152212-192.168.12.102-1709005876603 <font color=ForestGreen>&lt; blockpoolID &gt;</font><br>:blk_1073746367_5549, file&#x3D;&#x2F;hbase&#x2F;WALs&#x2F;hadoop102,16020,1712031081757&#x2F;hadoop102%2C16020%2C1712031081757.1712034695561, newgenerationstamp&#x3D;5556, newlength&#x3D;83, newtargets&#x3D;[192.168.12.102:9866, 192.168.12.103:9866, 192.168.12.104:9866]) successful</p>
+</blockquote>
+<font color=ForestGreen>
+cTime的值就是blockpoolID的最后那段时间戳 <br/>
+namespaceID的值为上方的nsid
+</font>
+
+<h3 id="name路径下的VERSION"><a href="#name路径下的VERSION" class="headerlink" title="name路径下的VERSION"></a>name路径下的VERSION</h3><p><strong>文件格式：</strong></p>
+<blockquote>
+<p>#Tue May 07 18:51:23 CST 2024<br>namespaceID&#x3D;1313511992<br>clusterID&#x3D;CID-7bafcbf4-3396-4c60-b3f3-52b7b528ce72<br>cTime&#x3D;1709005876603<br>storageType&#x3D;NAME_NODE<br>blockpoolID&#x3D;BP-294152212-192.168.12.102-1709005876603<br>layoutVersion&#x3D;-64</p>
+</blockquote>
+<p><strong>解决方式：</strong></p>
+<blockquote>
+</blockquote>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/" data-id="clvx5arej00034wub0kyt5rrq" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-Flume和kafka produce相关配置.18173908" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/Flume%E5%92%8Ckafka%20produce%E7%9B%B8%E5%85%B3%E9%85%8D%E7%BD%AE.18173908/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.685Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="Flume和Kafka-Produce的配置"><a href="#Flume和Kafka-Produce的配置" class="headerlink" title="Flume和Kafka Produce的配置"></a>Flume和Kafka Produce的配置</h1><p>我们一般都会知道Flume有三个组件：source、channel、sink</p>
+<p>我们这篇文章主要是讲解一下$\color{ForestGreen}{Flume}$、$\color{ForestGreen}{Kafka Producer(Kafka生产者)}$、$\color{ForestGreen}{Kafka Cluster(Kafka集群)}$之间的关系。</p>
+<p>我们在apache-flume-1.10版本的代码中可以看到。flume其实是用Kafka的生产者来向Kafka集群上传数据的。所以我们针对于生产者的优化，在flume中也可以使用了。<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240505215942051-646584164.png" alt="img"></p>
+<p>如果我们看过Kafka的调优，就可以知道，我们可以在$\color{ForestGreen}{生产者}$的<strong>batch.size</strong>和<strong>linger.ms</strong> 。是达到多少数据量还是多少毫秒发送一次。</p>
+<p>Kafka的吞吐量也主要受到生产者和消费者的影响。</p>
+<p>我们可以在自己写的配置文件里面设置<strong>batch.size</strong>和<strong>linger.ms</strong>。设置如下：</p>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240505215322404-550635251.png" alt="img"></p>
+<p>我们来看看效果：<br><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240505215519731-2050727666.png" alt="img"></p>
+<p>我们知道了生产者可以这样修改后。那么消费者也就理所当然的会了。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/Flume%E5%92%8Ckafka%20produce%E7%9B%B8%E5%85%B3%E9%85%8D%E7%BD%AE.18173908/" data-id="clvx5areg00014wub5s35ckt1" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-Flink调优初次笔记.18172373" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18172373/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.682Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="资源配置优化"><a href="#资源配置优化" class="headerlink" title="资源配置优化"></a>资源配置优化</h1><p>从1.11开始，增加了一个通用客户端模式，(-t yarn-job)</p>
+<h2 id="TaskManager内存模型"><a href="#TaskManager内存模型" class="headerlink" title="TaskManager内存模型"></a>TaskManager内存模型</h2><p>Flink既使用堆内存，又使用堆外内存。</p>
+<p>指定进程内存</p>
+<p>JVM metaspace:JVM元空间，默认256M</p>
+<p>JVM 执行内存：执行开销。有最小值和最大值。计算公式为：进程内存*0.1</p>
+<p>框架内存：<br>堆内和堆外。不计入Slot的资源开销。</p>
+<p>Task内存：执行用户代码使用的内存。<br>堆内：没有指定<br>堆外：默认关闭</p>
+<p>内存大小：其他组件分配完后，其余都是Task内存。</p>
+<p>网络缓冲内存（属于堆外）：用于数据交换<br>三个参数：比例(0.1)，最小值(64M)，最大值(1G)；<br>是Flink的总内存（进程内存-JVM内存）</p>
+<p>托管内存：比例(0.4)，Flink内存。<br>可以指定具体的大小（默认是none）。</p>
+<h2 id="yarn配置文件"><a href="#yarn配置文件" class="headerlink" title="yarn配置文件"></a>yarn配置文件</h2><p><code>capacity-scheduler.xml</code> 这个文件里面有个默认的策略：</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">property</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">name</span>&gt;</span>yarn.scheduler.capacity.resource-calculator<span class="tag">&lt;/<span class="name">name</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">value</span>&gt;</span>org.apache.hadoop.yarn.util.resource.DefaultResourceCalculator<span class="tag">&lt;/<span class="name">value</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">description</span>&gt;</span></span><br><span class="line">    The ResourceCalculator implementation to be used to compare</span><br><span class="line">    Resources in the scheduler.</span><br><span class="line">    The default i.e. DefaultResourceCalculator only uses Memory while</span><br><span class="line">    DominantResourceCalculator uses dominant-resource to compare</span><br><span class="line">    multi-dimensional resources such as Memory, CPU etc.</span><br><span class="line">  <span class="tag">&lt;/<span class="name">description</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">property</span>&gt;</span></span><br></pre></td></tr></table></figure>
+
+<p>这个策略只会考虑内存。不会考虑CPU。CPU默认为1</p>
+<p>需要将这个value换成这个：<br><code>&lt;value&gt;org.apache.hadoop.yarn.util.resource.DominantResourceCalculator&lt;/value&gt;</code><br>这个策略会考虑CPU资源。我们在提交时指定的CPU数量才会生效。</p>
+<p>slot只会隔离内存。不会隔离CPU。也就是说，slot共享CPU。</p>
+<h2 id="Flink反压"><a href="#Flink反压" class="headerlink" title="Flink反压"></a>Flink反压</h2><p>两个算子A，B。<br>A有ResultPartition<br>B有InputGet</p>
+<p>反应的场景：数据洪峰、垃圾回收停顿</p>
+<h2 id="Flink-Job"><a href="#Flink-Job" class="headerlink" title="Flink Job"></a>Flink Job</h2><p>对算子指定UUID。<br>如果不指定UUID的话，会有可能造成下面的情况：<br>从保存点开启新任务时。会导致映射失败。</p>
+<h2 id="链路延迟"><a href="#链路延迟" class="headerlink" title="链路延迟"></a>链路延迟</h2><p>可以在普罗米修斯里面监控到。在webUI里面死活没有</p>
+<h2 id="对象重用"><a href="#对象重用" class="headerlink" title="对象重用"></a>对象重用</h2><h2 id="Flink-SQL-优化"><a href="#Flink-SQL-优化" class="headerlink" title="Flink SQL 优化"></a>Flink SQL 优化</h2><p>设置TTL</p>
+<p>开启MiniBatch：减少对state的访问。减少数据的输出量</p>
+<p>LocalGlobal ： 用于数据倾斜</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18172373/" data-id="clvx5arei00024wubg8odfowk" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-Flink调优初次笔记.18149070" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18149070/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.680Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="Hello-World"><a href="#Hello-World" class="headerlink" title="Hello World"></a>Hello World</h1>
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18149070/" data-id="clvx5are900004wub8rfo8ro5" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+    <article id="post-Kafka性能测试.18174790" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/2024/05/08/Kafka%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.18174790/" class="article-date">
+  <time class="dt-published" datetime="2024-05-08T01:31:21.677Z" itemprop="datePublished">2024-05-08</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <h1 id="Kafka性能测试"><a href="#Kafka性能测试" class="headerlink" title="Kafka性能测试"></a>Kafka性能测试</h1><h2 id="单节点、百兆网卡"><a href="#单节点、百兆网卡" class="headerlink" title="单节点、百兆网卡"></a>单节点、百兆网卡</h2><h3 id="生产者"><a href="#生产者" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506185519459-605853289.png" alt="img"></p>
+<h3 id="消费者"><a href="#消费者" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">19:01:12:193</td>
+<td align="left">19:05:25:988</td>
+<td align="left">2861.3758</td>
+<td align="left">11.2744</td>
+<td align="left">3000370</td>
+<td align="left">11822.0217</td>
+<td align="left">774</td>
+<td align="left">253021</td>
+<td align="left">11.3088</td>
+<td align="left">11858.1857</td>
+</tr>
+</tbody></table>
+<h2 id="集群（3个节点）、百兆网卡"><a href="#集群（3个节点）、百兆网卡" class="headerlink" title="集群（3个节点）、百兆网卡"></a>集群（3个节点）、百兆网卡</h2><h3 id="生产者-1"><a href="#生产者-1" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506192606375-45654725.png" alt="img"></p>
+<h3 id="消费者-1"><a href="#消费者-1" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">19:28:07:904</td>
+<td align="left">19:28:36:407</td>
+<td align="left">953.7115</td>
+<td align="left">33.4600</td>
+<td align="left">1000039</td>
+<td align="left">35085.3945</td>
+<td align="left">299</td>
+<td align="left">28204</td>
+<td align="left">33.8148</td>
+<td align="left">35457.3465</td>
+</tr>
+</tbody></table>
+<h2 id="单节点、不限制网卡"><a href="#单节点、不限制网卡" class="headerlink" title="单节点、不限制网卡"></a>单节点、不限制网卡</h2><h3 id="生产者-2"><a href="#生产者-2" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506195038370-231527460.png" alt="img"></p>
+<h3 id="消费者-2"><a href="#消费者-2" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">19:51:16:377</td>
+<td align="left">19:51:27:616</td>
+<td align="left">953.9738</td>
+<td align="left">84.8807</td>
+<td align="left">1000314</td>
+<td align="left">89003.8260</td>
+<td align="left">374</td>
+<td align="left">10865</td>
+<td align="left">87.8025</td>
+<td align="left">92067.5564</td>
+</tr>
+</tbody></table>
+<h2 id="集群（3台）、不限制网卡"><a href="#集群（3台）、不限制网卡" class="headerlink" title="集群（3台）、不限制网卡"></a>集群（3台）、不限制网卡</h2><h3 id="生产者-3"><a href="#生产者-3" class="headerlink" title="生产者"></a>生产者</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506204448492-1822907702.png" alt="img"></p>
+<h3 id="消费者-3"><a href="#消费者-3" class="headerlink" title="消费者"></a>消费者</h3><table>
+<thead>
+<tr>
+<th align="left">start.time</th>
+<th align="left">end.time</th>
+<th align="left">data.consumed.in.MB</th>
+<th align="left">MB.sec</th>
+<th align="left">data.consumed.in.nMsg</th>
+<th align="left">nMsg.sec</th>
+<th align="left">rebalance.time.ms</th>
+<th align="left">fetch.time.ms</th>
+<th align="left">fetch.MB.sec</th>
+<th align="left">fetch.nMsg.sec</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">20:45:27:097</td>
+<td align="left">20:45:33:382</td>
+<td align="left">953.6743</td>
+<td align="left">151.7382</td>
+<td align="left">1000000</td>
+<td align="left">159108.9897</td>
+<td align="left">970</td>
+<td align="left">5315</td>
+<td align="left">179.4307</td>
+<td align="left">188146.7545</td>
+</tr>
+</tbody></table>
+<h2 id="生产者参数配置"><a href="#生产者参数配置" class="headerlink" title="生产者参数配置"></a>生产者参数配置</h2><h3 id="linger-ms-5"><a href="#linger-ms-5" class="headerlink" title="linger.ms &#x3D; 5"></a>linger.ms &#x3D; 5</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506205051326-1745350431.png" alt="img"></p>
+<p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506205130503-1902726093.png" alt="img"></p>
+<h3 id="linger-ms-5-batch-size-32M"><a href="#linger-ms-5-batch-size-32M" class="headerlink" title="linger.ms &#x3D; 5 &amp;&amp; batch.size&#x3D;32M"></a>linger.ms &#x3D; 5 &amp;&amp; batch.size&#x3D;32M</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210016326-2124188368.png" alt="img"></p>
+<h3 id="linger-ms-10-batch-size-32M"><a href="#linger-ms-10-batch-size-32M" class="headerlink" title="linger.ms &#x3D; 10 &amp;&amp; batch.size&#x3D;32M"></a>linger.ms &#x3D; 10 &amp;&amp; batch.size&#x3D;32M</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210144954-1240478869.png" alt="img"></p>
+<h3 id="linger-ms-20-batch-size-32M"><a href="#linger-ms-20-batch-size-32M" class="headerlink" title="linger.ms &#x3D; 20 &amp;&amp; batch.size&#x3D;32M"></a>linger.ms &#x3D; 20 &amp;&amp; batch.size&#x3D;32M</h3><p><img src="https://img2023.cnblogs.com/blog/2580584/202405/2580584-20240506210316653-1574435963.png" alt="img"></p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://example.com/2024/05/08/Kafka%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.18174790/" data-id="clvx5arek00054wubgduo8p87" data-title="" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      
+      
+      
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
     <article id="post-hello-world" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
   <div class="article-meta">
     <a href="/2024/05/08/hello-world/" class="article-date">
@@ -108,7 +639,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://example.com/2024/05/08/hello-world/" data-id="clvx4r6tn0000t4ub2p0lcn5z" data-title="Hello World" class="article-share-link"><span class="fa fa-share">Share</span></a>
+      <a data-url="http://example.com/2024/05/08/hello-world/" data-id="clvx5arep00064wub5wn95uk5" data-title="Hello World" class="article-share-link"><span class="fa fa-share">Share</span></a>
       
       
       
@@ -151,7 +682,23 @@
       <ul>
         
           <li>
-            <a href="/2024/05/08/hello-world/">Hello World</a>
+            <a href="/2024/05/08/hive%20on%20spark%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B.18136064/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/hive%20on%20spark%20%E4%BC%98%E5%8C%96-SQL%E5%B1%82%E9%9D%A2.18172390/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Hadoop%20VERSION%E6%96%87%E4%BB%B6%E8%AF%AF%E5%88%A0.18178177/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Flume%E5%92%8Ckafka%20produce%E7%9B%B8%E5%85%B3%E9%85%8D%E7%BD%AE.18173908/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2024/05/08/Flink%E8%B0%83%E4%BC%98%E5%88%9D%E6%AC%A1%E7%AC%94%E8%AE%B0.18172373/">(no title)</a>
           </li>
         
       </ul>
